@@ -31,28 +31,23 @@ The data is divides into 3 sections, collected over a 30-day period:
 
 ## Approach/Solution Statement
 
-I will apply supervised machine learning to predict the propensity that a customer will complete a transaction given an offer.
+I will apply supervised machine learning to predict the propensity that a customer will complete a transaction given a specific offer.  In other words, given a particular combination of user/offer, predict whether or not the user will engage with the offer
 
-Multiple classification models are available, including but not limited to:
+Autogluon provides an automated model selection and ensembling flow that optimizes for performance, so that will be used for a general-purpose predictor.
 
-- Logistic Regression
-- SVM
-- Random Forest
-- Naive Bayes
-- Neural Network
+General concerns:
+
+- Interpretability: The given demographic data is minimal for users, and this model would be largely internally-facing, so this is not a major concern
+- Throughput/scalability: Only one prediction will be made per user/offer combination in the special rewards program, so these are not concerns either.
+- Latency: These predictions are purely internal-facing and not time-sensitive. As such, they can be predicted offline and stored in a reference database, so latency not a conern.
 
 ### Benchmark
 
-We can evaluate the models against the base performance of the rewards program. For instance, if the predictive performance of the model is equivalent to the base probabilities of users engaging with offers, then it can be disregarded.
+We can evaluate the model against a simple base model. Logistic Regression is simple, easy to train, and easy to interpret. So all things being equal, it would be a good reference model to compare against.
 
 ### Evaluation Metrics
 
-For a classification model, we can consider the core model performance metrics:  
-
-- Accuracy
-- F1 score
-- Precision
-- Recall
+For a classification model, we can consider F1 as our core performance metric, as it will provide the best overall balance between various model concerns (ex: precision vs. recall)
 
 False positives would be to provide offers to users who would not engage with them.
 False negatives are overlooking users who would engage with offers.  
@@ -65,6 +60,10 @@ If we consider the marginal profit associated with each transaction, then we can
 The steps in this project include the following:  
 
 - Data exploration: The provided data will be processed and explored in order to understand the core properties, and uncover possible insights that could be leveraged to build a model or even basic heuristics.
+  - In particular, this includes a breakdown of user demographics, as well as a deepdive into transaction behavior to understand which users would be most influenced by promotional offers.
 - Data cleaning and preprocessing: Data should be cleaned and processed so that it can be used to train a machine learning model. This includes handling invalid data, feature engineering, and preparing train/test sets.
-- Model training: This includes establishing a benchmark model, tuning hyperparameters, and evaluating performance between different model choices on a validation set.
-- Final report: Report on insights in the data as well as model performance and deployment plans
+  - In particular, using transaction data calculating a propensity score that can be used to predict user engagement with promotional offers.
+- Model training: This includes establishing the benchmark model and evaluating performance between that and the Autogluon model.
+- Final report: Report on insights in the data and model as well as strategy recommendations.
+  - For instance, how can we refine offer targeting? Are all users influencable by promotions, or are there subsets that we should be targeting more heavily?
+  - What is ROI gain by using this model?  Can we improve the offerings that we provide? Or can we reduce our cost on offers that don't drive more purchases?
