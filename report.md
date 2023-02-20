@@ -144,11 +144,11 @@ Classification model requires binary inputs, so for simplicity I will round the 
 
 Transaction and offer completion data:
 
-<img src="img/view rates.png"  width="50%" height="50%">  
+<img src="img/view rates.png"  width="60%" height="60%">  
 
 View rate is defined as the proportion of received offers that are then viewed by the user. BOGO-based offers have the highest view rate, approximately 80% while the other offers are closer to 70%.
 
-<img src="img/completion rates.png"  width="50%" height="50%">  
+<img src="img/completion rates.png"  width="60%" height="60%">  
 
 Completion rate is defined as the proportion of received offers that are then completed by the user. Completion consists of performing a transaction that meets the offer's minimum spend and is done before the offer's expiration date.
 
@@ -156,7 +156,7 @@ Counter to above, the completion rate is higher for discount-based offers than i
 
 (for informational offers, there is no completion event, so the rate is trivially 0)
 
-<img src="img/gender.png"  width="50%" height="50%">  
+<img src="img/gender.png"  width="60%" height="60%">  
 
 The above graph shows the distribution of users by gender. The main takeaway here is that a slight majority (60%) are male, and a very small minority are classified as "other".
 
@@ -168,6 +168,19 @@ Including offer details as an input feature allows us to simulate the reception 
 
 This type of model would provide value in prioritizing users to target with future campaigns.  For campaigns that are more resource-intensive, this can help to reduce the scope, so that we focus it towards the most promising users.
 Also, it would allow for testing new campaigns against the existing user base. When considering multiple promotional offers, an quick approach would be to pick the offer that yields the most positive predictions against the existing user base.
+
+### Train/Test Split
+
+Before any model testing is done, the data needs to be split into a train set and a test set. The former will be used to build a model, and the latter will be used to evaluate the final performance. This is necessary because we want to estimate the model's performance on unseen data, so as to understand how it will perform in a production setting.
+
+For this case, I specified the test set to be 20% of the full dataset.
+
+Optionally, the training data can be further split into a validation set for hyperparameter tuning. Autogluon handles validation sets innately, so a separate validation set is not necessary.
+
+```
+from sklearn.model_selection import train_test_split
+train_data, test_data = train_test_split(final_df, test_size=0.2)
+```
 
 ### Evaluation Metric
 
@@ -185,31 +198,33 @@ In other words, when we do find combinations that are promising, can we be confi
 
 SKLearn's Logistic Regression module was used as a baseline due to its simplicity and ease of training and evaluation.
 
-<img src="img/baseline_cm.png"  width="50%" height="50%">  
+<img src="img/baseline_cm.png"  width="60%" height="60%">  
 
 The above confusion matrix compares the true labels against the predicted labels.
 In other words, how often do we misclassify user/offer combos? And how do we misclassify them?
 Ideally we land in the top left or bottom right buckets, which correspond to correct predictions.
 
-This model is evenly split between true negatives and false positives, suggesting that it is biased towards positive predictions.  In this context, we prefer false positives to false negatives, so this is not a major concern.
+This model is evenly split between true negatives and false positives, suggesting that it is biased towards positive predictions (~8000 positive predictions vs ~2600 negative).  In this context, we prefer false positives to false negatives, so this is not a major concern.
 False negatives correspond to a missed opportunity (we fail to identify a user/offer combo that would lead to engagement) while false positives correspond to wasted resources (sending a user an offer that they won't use).
-
 
 ### Autogluon
 
-Autogluon provides innate model selection and ensembling to provide overall strong performance
+Autogluon provides innate model selection and ensembling to provide overall strong performance. The final model ended up being an ensemble of simpler classification models including Gradient Boosted Decision Trees, Random Forests, and KNN Classifiers.
 
-<img src="img/ag_cm.png"  width="50%" height="50%">  
+<img src="img/ag_cm.png"  width="60%" height="60%">  
 
-Confusion matrix above shows performance for AG model. Half as many false negatives in comparison to the baseline model.
+The confusion matrix above shows performance for AG model. While it is still biased towards positive predictions, it yields as many false negatives in comparison to the baseline model. Given that we want to minimize false negatives in this context, this is a significant improvement.
 
-<img src="img/roc.png"  width="50%" height="50%">  
-  
-  
+<img src="img/roc.png"  width="60%" height="60%">  
+
+The above ROC curve describes the performance of the model as we adjust the cutoff threshold for positive/negative predictions. An ideal model would be as close as possible to the upper left-hand corner of this plot. The AG model is consistently above the Logistic Regression model here, suggesting that it consistently outperforms the baseline.
+
 | Model | F1 | Accuracy | Precision | Recall |  
 | ----------- | ----------- | ----------- | ----------- | ----------- |  
 | Logistic Regression | 0.71 | 0.63 | 0.64 | 0.8 |
 | Autogluon   | 0.78 | 0.71 | 0.67 | 0.92 |
+
+Finally, the above table documents several key performance metrics between the two models. The AG model consistently outpeforms the Logistic Regression baseline on every metric.
 
 ## Conclusion
 
