@@ -35,6 +35,8 @@ I will apply supervised machine learning to predict the propensity that a custom
 
 Autogluon provides an automated model selection and ensembling flow that optimizes for performance, so that will be used for a general-purpose predictor.
 
+The model can be trained in AWS SageMaker. Data can be stored in AWS S3 and prepared in a SageMaker Notebook instance with a Jupyter Notebook. Once a model is trained, it can be deployed to an endpoint in SageMaker to be used for live predictions through AWS Lambda.
+
 General concerns:
 
 - Interpretability: The given demographic data is minimal for users, and this model would be largely internally-facing, so this is not a major concern
