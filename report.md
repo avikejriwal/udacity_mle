@@ -75,9 +75,21 @@ The above code chunk removes null entries in the user data. In particular rows w
 
 If sample bias is a concern when removing incomplete data, then an alternative might be to use pessimistic imputation instead (for instance: fill in the income with the lowest reported income in the data).
 
+The following code chunk converts the user's signup date into 3 distinct features, each of which can be represented numerically. It is possible that there are seasonal patterns in the data, which temporal features such as these could capture.
+
+```
+df_users['month_signup'] = df_users['became_member_on'].dt.month
+df_users['year_signup'] = df_users['became_member_on'].dt.year
+df_users['day_signup'] = df_users['became_member_on'].dt.day
+```
+
+
+
 ### Transaction data
 
-I can see which users fulfilled promotional offers, and which did not. Using this, I can define propensity, which is # fulfilled / # viewed.
+I can see which users fulfilled promotional offers, and which did not.  
+Using this, I can define a propensity score for each user/offer set. 
+This can be computed as the ratio of the completed offers to the number of viewed offers.
 
 ```
 df_transcript['is_transaction'] = df_transcript['event'] == 'transaction'
@@ -87,6 +99,10 @@ df_transcript['is_received'] = df_transcript['event'] == 'offer received'
 user_agg = df_transcript.groupby(['person', 'offer_id'])[['is_received', 'is_viewed', 'is_completed', 'is_transaction']].sum()
 user_agg['propensity'] = user_agg['is_completed'] / user_agg['is_viewed']
 ```
+
+One edge case to consider is when a user completes an offer without viewing it. This should not be considered as influenced behavior, as the user had no knowledge of the offer during their transactions. While beyond the scope of this project, one consideration may be to adjust the promotions such that users have to view them or somehow opt-in in order to be eligible.
+
+
 ### Offer data
 
 The main processing to be done on this data is to parse out the channel data from a series of lists. Because there are only 4 distinct channels, we can simply create a binary flag for each one:
@@ -98,7 +114,7 @@ for channel in channels:
 
 ### Feature engineering
 
-Partially covered above.
+This is partially addressed above, but one last step in the preprocessing is in handling categorical data:
 
 ```
 pd.get_dummies(final_df)
@@ -108,11 +124,19 @@ The above chunk generates one-hot encodings for categorical features. In particu
 
 ### Joining everyting together
 
-bring everything together into a tabular dataset that can be fed into a machine learning model.
+Now that we've cleaned and processed the original datasets, we can combine everything into a single tabular dataset that can subsequently be fed into a machine learning model.
 
-Join propensity data with user and offer datasets, linking them through the corresponding ids ("person" for the former, "offer id" for the latter)
+```
+final_df = pd.merge(
+    target_value,
+    pd.merge(df_users, df_portfolio, on='key', how='inner'),
+    on=['person', 'offer_id'], how='inner'
+)
+```
 
-Save this to a csv for future reference, so as to minimize the future work if I want to revisit this.
+The above code combines the datasets using a table join, linking everything through the corresponding id's for each table ('person' for the user data, and 'offer_id' for the offer portfolio data).
+
+```final_df['propensity'] = final_df['propensity'].round(0)```
 
 Classification model requires binary inputs, so for simplicity I will round the in-between entries. Given that these are a small minority of the data, it should not significantly impact performance.
 
@@ -121,19 +145,29 @@ Classification model requires binary inputs, so for simplicity I will round the 
 Transaction and offer completion data:
 
 <img src="img/view rates.png"  width="50%" height="50%">  
+
+View rate is defined as the proportion of received offers that are then viewed by the user. BOGO-based offers have the highest view rate, approximately 80% while the other offers are closer to 70%.
+
 <img src="img/completion rates.png"  width="50%" height="50%">  
+
+Completion rate is defined as the proportion of received offers that are then completed by the user. Completion consists of performing a transaction that meets the offer's minimum spend and is done before the offer's expiration date.
+
+Counter to above, the completion rate is higher for discount-based offers than it is for BOGO-based offers.
 
 (for informational offers, there is no completion event, so the rate is trivially 0)
 
-user data:
-
 <img src="img/gender.png"  width="50%" height="50%">  
+
+The above graph shows the distribution of users by gender. The main takeaway here is that a slight majority (60%) are male, and a very small minority are classified as "other".
 
 ## Model
 
+The modeling approach will be to predict whether or not a user will engage with a given offer. This can be presented as a classification problem, where the inputs are the user and the offer, and the output is the transaction likelihood.
+
 Including offer details as an input feature allows us to simulate the reception to new offer programs. Also, it helps to better understand what goes into effective offers.
 
-Useful for prioritizing users to target with future campaigns. Also for testing new campaigns against the existing user base. When considering multiple promotional offers, an quick approach would be to pick the offer that yields the most positive predictions against the existing user base.
+This type of model would provide value in prioritizing users to target with future campaigns.  For campaigns that are more resource-intensive, this can help to reduce the scope, so that we focus it towards the most promising users.
+Also, it would allow for testing new campaigns against the existing user base. When considering multiple promotional offers, an quick approach would be to pick the offer that yields the most positive predictions against the existing user base.
 
 ### Evaluation Metric
 
@@ -153,9 +187,12 @@ SKLearn's Logistic Regression module was used as a baseline due to its simplicit
 
 <img src="img/baseline_cm.png"  width="50%" height="50%">  
 
-Confusion matrix compares the true labels against the predicted labels.
-How often do we misclassify user/offer combos? And how do we misclassify them?
+The above confusion matrix compares the true labels against the predicted labels.
+In other words, how often do we misclassify user/offer combos? And how do we misclassify them?
 Ideally we land in the top left or bottom right buckets, which correspond to correct predictions.
+
+This model is evenly split between true negatives and false positives, suggesting that it is biased towards positive predictions.  In this context, we prefer false positives to false negatives, so this is not a major concern.
+False negatives correspond to a missed opportunity (we fail to identify a user/offer combo that would lead to engagement) while false positives correspond to wasted resources (sending a user an offer that they won't use).
 
 
 ### Autogluon
@@ -172,9 +209,7 @@ Confusion matrix above shows performance for AG model. Half as many false negati
 | Model | F1 | Accuracy | Precision | Recall |  
 | ----------- | ----------- | ----------- | ----------- | ----------- |  
 | Logistic Regression | 0.71 | 0.63 | 0.64 | 0.8 |
-| Autogluon   | X | | | |
-
-(Feature importance?)
+| Autogluon   | 0.78 | 0.71 | 0.67 | 0.92 |
 
 ## Conclusion
 
@@ -182,8 +217,9 @@ In this project, I have analyzed and cleaned data related to rewards programs an
 
 ### Future considerations
 
-- dig further into hyperparameter tuning; possible improvements to be made
-- incorporate other data sources into predictions:
-  - macroeconomic data; How do market conditions influence customer patterns?
-- Test the model on new offer programs
-- focus further on user transaction behavior: can we determine if a transaction would have occurred without the offer? If so, can we only target users who would initiate new transactions?
+1. I can spend more time on hyperparameter tuning; possible improvements to be made by adjusting the features of both the baseline and the Autogluon model. For instance: If I extend the max training time, will performance improve?
+2. Incorporate other data sources into predictions:
+  - For instance: macroeconomic data; How do market conditions influence customer patterns?
+3. Consider potential new offer programs on which to test the model. What offers will yield the highest likelihood of engagement?
+4. Focus further on user transaction behavior.
+  - Can we determine if a transaction would have occurred without the offer? If so, can we only target users who would initiate new transactions?
