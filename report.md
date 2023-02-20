@@ -54,32 +54,57 @@ The data is divided into 3 sections, collected over a 30-day period:
 
 ## Data Preparation
 
+```
+df_users = pd.read_json('data/profile.json', lines=True)
+df_portfolio = pd.read_json('data/portfolio.json', lines=True)
+df_transcript = pd.read_json('data/transcript.json', lines=True)
+```
+
+Load the provided datasets into Pandas DataFrames so that they can be processed and analyzed in a Jupyter notebook.
+
 ### User data
 
-remove null entries
+```
+df_users['became_member_on'] = pd.to_datetime(df_users['became_member_on'], format='%Y%m%d')
+df_users.isnull().sum()
+df_users.dropna(subset='gender', inplace=True)
+df_users = df_users[df_users['age'] != 118]
+```
 
-- gender, income, and age
+The above code chunk removes null entries in the user data. In particular rows with null values for gender, income, or age (which gets recorded as 118 for some reason).  It also parses out the timestamp into a Python datetime object.
 
-Concerns around sample bias if we filter users without incomes. However every user who didn't fill this in also didn't fill in gender. An alternative might be a pessimistic imputation (fill in the values with the lowest income value)
+If sample bias is a concern when removing incomplete data, then an alternative might be to use pessimistic imputation instead (for instance: fill in the income with the lowest reported income in the data).
 
 ### Transaction data
 
 I can see which users fulfilled promotional offers, and which did not. Using this, I can define propensity, which is # fulfilled / # viewed.
 
+```
+df_transcript['is_transaction'] = df_transcript['event'] == 'transaction'
+df_transcript['is_completed'] = df_transcript['event'] == 'offer completed'
+df_transcript['is_viewed'] = df_transcript['event'] == 'offer viewed'
+df_transcript['is_received'] = df_transcript['event'] == 'offer received'
+user_agg = df_transcript.groupby(['person', 'offer_id'])[['is_received', 'is_viewed', 'is_completed', 'is_transaction']].sum()
+user_agg['propensity'] = user_agg['is_completed'] / user_agg['is_viewed']
+```
 ### Offer data
 
-Converting distribution into binary flags
+The main processing to be done on this data is to parse out the channel data from a series of lists. Because there are only 4 distinct channels, we can simply create a binary flag for each one:
+```
+channels = set(df_portfolio['channels'].sum())
+for channel in channels:
+    df_portfolio[f'is_{channel}'] = df_portfolio['channels'].apply(lambda x: channel in x)
+```
 
 ### Feature engineering
 
 Partially covered above.
 
-One-hot encoding categorical features
+```
+pd.get_dummies(final_df)
+```
 
-- gender for user data
-- offer type in offer data
-
-Similarly, creating binary flags for offer channels
+The above chunk generates one-hot encodings for categorical features. In particular this applies to the 'gender' column in user data and the 'offer type' in the offer portfolio data.
 
 ### Joining everyting together
 
@@ -106,7 +131,9 @@ user data:
 
 ## Model
 
-Including offer details as an input feature allows us to simulate the reception to new offer programs. Also, it helps to better understand what types of offers are the most effective
+Including offer details as an input feature allows us to simulate the reception to new offer programs. Also, it helps to better understand what goes into effective offers.
+
+Useful for prioritizing users to target with future campaigns. Also for testing new campaigns against the existing user base. When considering multiple promotional offers, an quick approach would be to pick the offer that yields the most positive predictions against the existing user base.
 
 ### Evaluation Metric
 
@@ -126,6 +153,11 @@ SKLearn's Logistic Regression module was used as a baseline due to its simplicit
 
 <img src="img/baseline_cm.png"  width="50%" height="50%">  
 
+Confusion matrix compares the true labels against the predicted labels.
+How often do we misclassify user/offer combos? And how do we misclassify them?
+Ideally we land in the top left or bottom right buckets, which correspond to correct predictions.
+
+
 ### Autogluon
 
 Autogluon provides innate model selection and ensembling to provide overall strong performance
@@ -139,7 +171,7 @@ Confusion matrix above shows performance for AG model. Half as many false negati
   
 | Model | F1 | Accuracy | Precision | Recall |  
 | ----------- | ----------- | ----------- | ----------- | ----------- |  
-| Logistic Regression | X | | | |
+| Logistic Regression | 0.71 | 0.63 | 0.64 | 0.8 |
 | Autogluon   | X | | | |
 
 (Feature importance?)
